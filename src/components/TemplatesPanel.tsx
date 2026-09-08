@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMindMap } from '../MindMapContext';
+import { MindNode } from '../types';
+import { v4 as uuidv4 } from 'uuid';
 
 interface Template {
   id: string;
@@ -20,176 +22,118 @@ const TEMPLATES: Template[] = [
 ];
 
 export default function TemplatesPanel() {
-  const { state, dispatch, addNode, updateNode, autoLayout, pushHistory } = useMindMap();
+  const { state, dispatch, pushHistory, autoLayout } = useMindMap();
   const { theme } = state;
   const isDark = theme === 'dark';
   const [isOpen, setIsOpen] = useState(false);
 
+  const createNode = (id: string, parentId: string | null, text: string, x: number, y: number, color: string, shape: MindNode['shape'] = 'rounded', width = 160, height = 48, extra: Partial<MindNode> = {}): MindNode => {
+    return {
+      id,
+      parentId,
+      text,
+      color,
+      shape,
+      fontSize: 14,
+      x,
+      y,
+      width,
+      height,
+      collapsed: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      ...extra,
+    };
+  };
+
   const applyTemplate = (templateId: string) => {
     pushHistory('اعمال قالب');
     
-    // Clear existing nodes using BATCH_UPDATE
+    let nodes: Record<string, MindNode> = {};
+    let rootId: string;
+
+    switch (templateId) {
+      case 'brainstorm': {
+        rootId = 'tpl-root';
+        nodes[rootId] = createNode(rootId, null, '🧠 طوفان فکری', 500, 350, '#6366f1', 'pill', 220, 60, { fontSize: 20, fontWeight: 'bold' });
+        nodes['tpl-1'] = createNode('tpl-1', rootId, '💡 ایده‌های نو', 800, 150, '#f59e0b', 'rounded', 170, 48);
+        nodes['tpl-2'] = createNode('tpl-2', rootId, '🎨 خلاقیت', 800, 300, '#ec4899', 'rounded', 170, 48);
+        nodes['tpl-3'] = createNode('tpl-3', rootId, '🔧 راه‌حل‌ها', 800, 450, '#22c55e', 'rounded', 170, 48);
+        nodes['tpl-4'] = createNode('tpl-4', rootId, '⚡ نوآوری', 200, 200, '#3b82f6', 'rounded', 170, 48);
+        nodes['tpl-5'] = createNode('tpl-5', rootId, '🌟 الهام', 200, 400, '#8b5cf6', 'rounded', 170, 48);
+        break;
+      }
+      case 'project': {
+        rootId = 'tpl-root';
+        nodes[rootId] = createNode(rootId, null, '📋 مدیریت پروژه', 500, 350, '#6366f1', 'pill', 240, 65, { fontSize: 20, fontWeight: 'bold' });
+        nodes['tpl-1'] = createNode('tpl-1', rootId, '📝 برنامه‌ریزی', 800, 100, '#3b82f6', 'rounded', 180, 50);
+        nodes['tpl-2'] = createNode('tpl-2', rootId, '💻 توسعه', 800, 250, '#22c55e', 'rounded', 180, 50);
+        nodes['tpl-3'] = createNode('tpl-3', rootId, '🧪 تست', 800, 400, '#ef4444', 'rounded', 180, 50);
+        nodes['tpl-4'] = createNode('tpl-4', rootId, '🚀 استقرار', 200, 200, '#8b5cf6', 'rounded', 180, 50);
+        nodes['tpl-5'] = createNode('tpl-5', rootId, '📊 گزارش', 200, 400, '#06b6d4', 'rounded', 180, 50);
+        nodes['tpl-1-1'] = createNode('tpl-1-1', 'tpl-1', 'تعریف اهداف', 1050, 60, '#60a5fa', 'rounded', 150, 42, { priority: 'high' });
+        nodes['tpl-1-2'] = createNode('tpl-1-2', 'tpl-1', 'زمان‌بندی', 1050, 130, '#60a5fa', 'rounded', 150, 42, { progress: 75 });
+        nodes['tpl-1-3'] = createNode('tpl-1-3', 'tpl-1', 'تخصیص منابع', 1050, 200, '#60a5fa', 'rounded', 150, 42);
+        nodes['tpl-2-1'] = createNode('tpl-2-1', 'tpl-2', 'فرانت‌اند', 1050, 250, '#4ade80', 'rounded', 150, 42, { progress: 50 });
+        nodes['tpl-2-2'] = createNode('tpl-2-2', 'tpl-2', 'بک‌اند', 1050, 320, '#4ade80', 'rounded', 150, 42, { progress: 30 });
+        nodes['tpl-2-3'] = createNode('tpl-2-3', 'tpl-2', 'دیتابیس', 1050, 390, '#4ade80', 'rounded', 150, 42);
+        break;
+      }
+      case 'study': {
+        rootId = 'tpl-root';
+        nodes[rootId] = createNode(rootId, null, '📚 مطالعه و یادگیری', 500, 350, '#22c55e', 'pill', 250, 60, { fontSize: 20, fontWeight: 'bold' });
+        nodes['tpl-1'] = createNode('tpl-1', rootId, '📖 مفاهیم کلیدی', 800, 150, '#3b82f6', 'rounded', 180, 48);
+        nodes['tpl-2'] = createNode('tpl-2', rootId, '📝 یادداشت‌ها', 800, 300, '#f59e0b', 'rounded', 180, 48);
+        nodes['tpl-3'] = createNode('tpl-3', rootId, '❓ سوالات', 800, 450, '#ef4444', 'rounded', 180, 48);
+        nodes['tpl-4'] = createNode('tpl-4', rootId, '🔗 ارتباطات', 200, 200, '#8b5cf6', 'rounded', 180, 48);
+        nodes['tpl-5'] = createNode('tpl-5', rootId, '✅ مرور', 200, 400, '#06b6d4', 'rounded', 180, 48);
+        break;
+      }
+      case 'decision': {
+        rootId = 'tpl-root';
+        nodes[rootId] = createNode(rootId, null, '⚖️ تصمیم‌گیری', 500, 350, '#f59e0b', 'pill', 220, 60, { fontSize: 20, fontWeight: 'bold' });
+        nodes['tpl-1'] = createNode('tpl-1', rootId, '🅰️ گزینه A', 800, 150, '#3b82f6', 'rounded', 170, 48);
+        nodes['tpl-2'] = createNode('tpl-2', rootId, '🅱️ گزینه B', 800, 300, '#22c55e', 'rounded', 170, 48);
+        nodes['tpl-3'] = createNode('tpl-3', rootId, '🅲 گزینه C', 800, 450, '#ef4444', 'rounded', 170, 48);
+        nodes['tpl-4'] = createNode('tpl-4', rootId, '📊 معیارها', 200, 200, '#8b5cf6', 'rounded', 170, 48);
+        nodes['tpl-5'] = createNode('tpl-5', rootId, '⚡ نتایج', 200, 400, '#06b6d4', 'rounded', 170, 48);
+        break;
+      }
+      case 'meeting': {
+        rootId = 'tpl-root';
+        nodes[rootId] = createNode(rootId, null, '🤝 جلسه', 500, 350, '#ec4899', 'pill', 200, 60, { fontSize: 20, fontWeight: 'bold' });
+        nodes['tpl-1'] = createNode('tpl-1', rootId, '📋 دستور جلسه', 800, 150, '#3b82f6', 'rounded', 180, 48);
+        nodes['tpl-2'] = createNode('tpl-2', rootId, '💬 بحث‌ها', 800, 300, '#22c55e', 'rounded', 180, 48);
+        nodes['tpl-3'] = createNode('tpl-3', rootId, '✅ مصوبات', 800, 450, '#f59e0b', 'rounded', 180, 48);
+        nodes['tpl-4'] = createNode('tpl-4', rootId, '📅 اقدامات بعدی', 200, 200, '#8b5cf6', 'rounded', 180, 48);
+        nodes['tpl-5'] = createNode('tpl-5', rootId, '👥 شرکت‌کنندگان', 200, 400, '#06b6d4', 'rounded', 180, 48);
+        break;
+      }
+      case 'goals': {
+        rootId = 'tpl-root';
+        nodes[rootId] = createNode(rootId, null, '🎯 اهداف سالانه', 500, 350, '#ef4444', 'pill', 230, 60, { fontSize: 20, fontWeight: 'bold' });
+        nodes['tpl-1'] = createNode('tpl-1', rootId, '🌸 فصل ۱', 800, 150, '#22c55e', 'rounded', 170, 48);
+        nodes['tpl-2'] = createNode('tpl-2', rootId, '☀️ فصل ۲', 800, 300, '#f59e0b', 'rounded', 170, 48);
+        nodes['tpl-3'] = createNode('tpl-3', rootId, '🍂 فصل ۳', 800, 450, '#ef4444', 'rounded', 170, 48);
+        nodes['tpl-4'] = createNode('tpl-4', rootId, '❄️ فصل ۴', 200, 200, '#3b82f6', 'rounded', 170, 48);
+        nodes['tpl-5'] = createNode('tpl-5', rootId, '📊 ارزیابی', 200, 400, '#8b5cf6', 'rounded', 170, 48);
+        break;
+      }
+      default:
+        return;
+    }
+
     dispatch({
       type: 'BATCH_UPDATE',
-      payload: { nodes: {}, connections: [] },
+      payload: { nodes, connections: [] },
     });
-    dispatch({ type: 'SET_STATE', payload: { rootId: null, selectedNodeId: null } });
-
-    setTimeout(() => {
-      switch (templateId) {
-        case 'brainstorm':
-          createBrainstormTemplate();
-          break;
-        case 'project':
-          createProjectTemplate();
-          break;
-        case 'study':
-          createStudyTemplate();
-          break;
-        case 'decision':
-          createDecisionTemplate();
-          break;
-        case 'meeting':
-          createMeetingTemplate();
-          break;
-        case 'goals':
-          createGoalsTemplate();
-          break;
-      }
-      setIsOpen(false);
-    }, 200);
-  };
-
-  const createBrainstormTemplate = () => {
-    const root = addNode(null, '🧠 طوفان فکری', 500, 350);
-    updateNode(root, { color: '#6366f1', shape: 'pill', fontSize: 20, fontWeight: 'bold', width: 220, height: 60 });
+    dispatch({ type: 'SET_STATE', payload: { rootId, selectedNodeId: null } });
     
     setTimeout(() => {
-      const branches = [
-        { text: '💡 ایده‌های نو', color: '#f59e0b', x: 800, y: 150 },
-        { text: '🎨 خلاقیت', color: '#ec4899', x: 800, y: 300 },
-        { text: '🔧 راه‌حل‌ها', color: '#22c55e', x: 800, y: 450 },
-        { text: '⚡ نوآوری', color: '#3b82f6', x: 200, y: 200 },
-        { text: '🌟 الهام', color: '#8b5cf6', x: 200, y: 400 },
-      ];
-      
-      branches.forEach(b => {
-        const id = addNode(root, b.text, b.x, b.y);
-        updateNode(id, { color: b.color, shape: 'rounded', width: 170, height: 48 });
-      });
-      
-      setTimeout(() => autoLayout(), 200);
+      autoLayout();
     }, 100);
-  };
-
-  const createProjectTemplate = () => {
-    const root = addNode(null, '📋 مدیریت پروژه', 500, 350);
-    updateNode(root, { color: '#6366f1', shape: 'pill', fontSize: 20, fontWeight: 'bold', width: 240, height: 65 });
     
-    setTimeout(() => {
-      const phases = [
-        { text: '📝 برنامه‌ریزی', color: '#3b82f6', x: 800, y: 100 },
-        { text: '💻 توسعه', color: '#22c55e', x: 800, y: 250 },
-        { text: '🧪 تست', color: '#ef4444', x: 800, y: 400 },
-        { text: '🚀 استقرار', color: '#8b5cf6', x: 200, y: 200 },
-        { text: '📊 گزارش', color: '#06b6d4', x: 200, y: 400 },
-      ];
-      
-      phases.forEach(p => {
-        const id = addNode(root, p.text, p.x, p.y);
-        updateNode(id, { color: p.color, shape: 'rounded', width: 180, height: 50 });
-      });
-      
-      setTimeout(() => autoLayout(), 200);
-    }, 100);
-  };
-
-  const createStudyTemplate = () => {
-    const root = addNode(null, '📚 مطالعه و یادگیری', 500, 350);
-    updateNode(root, { color: '#22c55e', shape: 'pill', fontSize: 20, fontWeight: 'bold', width: 250, height: 60 });
-    
-    setTimeout(() => {
-      const topics = [
-        { text: '📖 مفاهیم کلیدی', color: '#3b82f6', x: 800, y: 150 },
-        { text: '📝 یادداشت‌ها', color: '#f59e0b', x: 800, y: 300 },
-        { text: '❓ سوالات', color: '#ef4444', x: 800, y: 450 },
-        { text: '🔗 ارتباطات', color: '#8b5cf6', x: 200, y: 200 },
-        { text: '✅ مرور', color: '#06b6d4', x: 200, y: 400 },
-      ];
-      
-      topics.forEach(t => {
-        const id = addNode(root, t.text, t.x, t.y);
-        updateNode(id, { color: t.color, shape: 'rounded', width: 180, height: 48 });
-      });
-      
-      setTimeout(() => autoLayout(), 200);
-    }, 100);
-  };
-
-  const createDecisionTemplate = () => {
-    const root = addNode(null, '⚖️ تصمیم‌گیری', 500, 350);
-    updateNode(root, { color: '#f59e0b', shape: 'pill', fontSize: 20, fontWeight: 'bold', width: 220, height: 60 });
-    
-    setTimeout(() => {
-      const options = [
-        { text: '🅰️ گزینه A', color: '#3b82f6', x: 800, y: 150 },
-        { text: '🅱️ گزینه B', color: '#22c55e', x: 800, y: 300 },
-        { text: '🅲 گزینه C', color: '#ef4444', x: 800, y: 450 },
-        { text: '📊 معیارها', color: '#8b5cf6', x: 200, y: 200 },
-        { text: '⚡ نتایج', color: '#06b6d4', x: 200, y: 400 },
-      ];
-      
-      options.forEach(o => {
-        const id = addNode(root, o.text, o.x, o.y);
-        updateNode(id, { color: o.color, shape: 'rounded', width: 170, height: 48 });
-      });
-      
-      setTimeout(() => autoLayout(), 200);
-    }, 100);
-  };
-
-  const createMeetingTemplate = () => {
-    const root = addNode(null, '🤝 جلسه', 500, 350);
-    updateNode(root, { color: '#ec4899', shape: 'pill', fontSize: 20, fontWeight: 'bold', width: 200, height: 60 });
-    
-    setTimeout(() => {
-      const items = [
-        { text: '📋 دستور جلسه', color: '#3b82f6', x: 800, y: 150 },
-        { text: '💬 بحث‌ها', color: '#22c55e', x: 800, y: 300 },
-        { text: '✅ مصوبات', color: '#f59e0b', x: 800, y: 450 },
-        { text: '📅 اقدامات بعدی', color: '#8b5cf6', x: 200, y: 200 },
-        { text: '👥 شرکت‌کنندگان', color: '#06b6d4', x: 200, y: 400 },
-      ];
-      
-      items.forEach(item => {
-        const id = addNode(root, item.text, item.x, item.y);
-        updateNode(id, { color: item.color, shape: 'rounded', width: 180, height: 48 });
-      });
-      
-      setTimeout(() => autoLayout(), 200);
-    }, 100);
-  };
-
-  const createGoalsTemplate = () => {
-    const root = addNode(null, '🎯 اهداف سالانه', 500, 350);
-    updateNode(root, { color: '#ef4444', shape: 'pill', fontSize: 20, fontWeight: 'bold', width: 230, height: 60 });
-    
-    setTimeout(() => {
-      const quarters = [
-        { text: '🌸 فصل ۱', color: '#22c55e', x: 800, y: 150 },
-        { text: '☀️ فصل ۲', color: '#f59e0b', x: 800, y: 300 },
-        { text: '🍂 فصل ۳', color: '#ef4444', x: 800, y: 450 },
-        { text: '❄️ فصل ۴', color: '#3b82f6', x: 200, y: 200 },
-        { text: '📊 ارزیابی', color: '#8b5cf6', x: 200, y: 400 },
-      ];
-      
-      quarters.forEach(q => {
-        const id = addNode(root, q.text, q.x, q.y);
-        updateNode(id, { color: q.color, shape: 'rounded', width: 170, height: 48 });
-      });
-      
-      setTimeout(() => autoLayout(), 200);
-    }, 100);
+    setIsOpen(false);
   };
 
   return (

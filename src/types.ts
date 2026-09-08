@@ -43,7 +43,7 @@ export interface MindMapState {
   panX: number;
   panY: number;
   theme: 'dark' | 'light';
-  layout: 'organic' | 'radial' | 'tree-right' | 'tree-left' | 'tree-down';
+  layout: 'organic' | 'radial' | 'tree-right' | 'tree-left' | 'tree-down' | 'logic';
   connectionStyle: Connection['style'];
   showGrid: boolean;
   gridSize: number;

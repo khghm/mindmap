@@ -7,6 +7,8 @@ import PropertiesPanel from './components/PropertiesPanel';
 import SearchBar from './components/SearchBar';
 import StatusBar from './components/StatusBar';
 import TemplatesPanel from './components/TemplatesPanel';
+import QuickActions from './components/QuickActions';
+import NodeCounter from './components/NodeCounter';
 
 function MindMapApp() {
   const { state, addNode, updateNode, pushHistory, autoLayout, importJSON, dispatch } = useMindMap();
@@ -201,6 +203,12 @@ function MindMapApp() {
 
       {/* Properties Panel */}
       <PropertiesPanel />
+
+      {/* Quick Actions */}
+      <QuickActions />
+
+      {/* Node Counter */}
+      <NodeCounter />
 
       {/* Properties toggle button */}
       {state.selectedNodeId && (

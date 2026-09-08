@@ -250,6 +250,7 @@ interface MindMapContextType {
   duplicateNode: (id: string) => void;
   findNode: (id: string) => MindNode | undefined;
   searchNodes: (query: string) => MindNode[];
+  toggleTheme: () => void;
   canUndo: boolean;
   canRedo: boolean;
 }
@@ -436,6 +437,21 @@ export function MindMapProvider({ children }: { children: ReactNode }) {
           newNodes[gc.id] = { ...newNodes[gc.id], x: gcx - gc.width / 2, y: centerY + 150 };
         });
       });
+    } else if (type === 'logic') {
+      // Logic layout - root on left, children branching right
+      newNodes[root.id] = { ...newNodes[root.id], x: centerX - 300, y: centerY };
+      const children = nodes.filter(n => n.parentId === root.id);
+      
+      children.forEach((child, i) => {
+        const cy = centerY + (i - (children.length - 1) / 2) * 100;
+        newNodes[child.id] = { ...newNodes[child.id], x: centerX, y: cy - child.height / 2 };
+        
+        const grandChildren = nodes.filter(n => n.parentId === child.id);
+        grandChildren.forEach((gc, j) => {
+          const gcy = cy + (j - (grandChildren.length - 1) / 2) * 60;
+          newNodes[gc.id] = { ...newNodes[gc.id], x: centerX + 250, y: gcy - gc.height / 2 };
+        });
+      });
     } else {
       // Organic layout
       newNodes[root.id] = { ...newNodes[root.id], x: centerX, y: centerY };
@@ -491,6 +507,10 @@ export function MindMapProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error('Import failed:', e);
     }
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    dispatch({ type: 'TOGGLE_THEME' });
   }, []);
 
   const exportAsImage = useCallback(() => {
@@ -558,6 +578,7 @@ export function MindMapProvider({ children }: { children: ReactNode }) {
     duplicateNode,
     findNode,
     searchNodes,
+    toggleTheme,
     canUndo,
     canRedo,
   };
