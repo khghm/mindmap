@@ -251,6 +251,8 @@ interface MindMapContextType {
   findNode: (id: string) => MindNode | undefined;
   searchNodes: (query: string) => MindNode[];
   toggleTheme: () => void;
+  setZoom: (zoom: number) => void;
+  setPan: (x: number, y: number) => void;
   canUndo: boolean;
   canRedo: boolean;
 }
@@ -513,6 +515,14 @@ export function MindMapProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'TOGGLE_THEME' });
   }, []);
 
+  const setZoom = useCallback((zoom: number) => {
+    dispatch({ type: 'SET_ZOOM', payload: { zoom } });
+  }, []);
+
+  const setPan = useCallback((panX: number, panY: number) => {
+    dispatch({ type: 'SET_PAN', payload: { panX, panY } });
+  }, []);
+
   const exportAsImage = useCallback(() => {
     // Will be implemented in canvas component
     const event = new CustomEvent('export-image');
@@ -579,6 +589,8 @@ export function MindMapProvider({ children }: { children: ReactNode }) {
     findNode,
     searchNodes,
     toggleTheme,
+    setZoom,
+    setPan,
     canUndo,
     canRedo,
   };

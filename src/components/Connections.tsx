@@ -3,7 +3,8 @@ import { useMindMap } from '../MindMapContext';
 
 export default function Connections() {
   const { state } = useMindMap();
-  const { nodes, connections, connectionStyle, zoom, panX, panY } = state;
+  const { nodes, connections, connectionStyle, zoom, panX, panY, theme } = state;
+  const isDark = theme === 'dark';
 
   const nodeArray = Object.values(nodes);
 
@@ -20,10 +21,6 @@ export default function Connections() {
             <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
-        <linearGradient id="connectionGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.6" />
-          <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.6" />
-        </linearGradient>
       </defs>
 
       {nodeArray.map(node => {
@@ -38,7 +35,6 @@ export default function Connections() {
         let pathData = '';
 
         if (connectionStyle === 'bezier') {
-          const midX = (x1 + x2) / 2;
           const controlX1 = x1 + (x2 - x1) * 0.3;
           const controlX2 = x1 + (x2 - x1) * 0.7;
           pathData = `M ${x1} ${y1} C ${controlX1} ${y1}, ${controlX2} ${y2}, ${x2} ${y2}`;
@@ -49,33 +45,33 @@ export default function Connections() {
           pathData = `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`;
         } else if (connectionStyle === 'smooth') {
           const dx = x2 - x1;
-          const dy = y2 - y1;
           const cx1 = x1 + dx * 0.4;
-          const cy1 = y1;
           const cx2 = x2 - dx * 0.4;
-          const cy2 = y2;
-          pathData = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+          pathData = `M ${x1} ${y1} C ${cx1} ${y1}, ${cx2} ${y2}, ${x2} ${y2}`;
         }
 
         return (
           <g key={`conn-${node.id}`}>
+            {/* Glow effect */}
             <path
               d={pathData}
               stroke={node.color}
-              strokeWidth={2.5}
+              strokeWidth={4}
               fill="none"
-              opacity={0.6}
+              opacity={0.2}
               filter="url(#glow)"
             />
+            {/* Main line */}
             <path
               d={pathData}
               stroke={node.color}
-              strokeWidth={1.5}
+              strokeWidth={2}
               fill="none"
-              opacity={0.9}
+              opacity={0.7}
+              strokeLinecap="round"
             />
             {/* Animated dot */}
-            <circle r="3" fill={node.color} opacity={0.8}>
+            <circle r="3" fill={node.color} opacity={0.9}>
               <animateMotion
                 dur="3s"
                 repeatCount="infinite"
