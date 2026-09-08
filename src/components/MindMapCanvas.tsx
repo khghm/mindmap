@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useEffect } from 'react';
+import React, { useRef, useCallback, useEffect, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { useMindMap } from '../MindMapContext';
 import MindNodeComponent from './MindNodeComponent';
@@ -7,51 +7,89 @@ import MiniMap from './MiniMap';
 
 export default function MindMapCanvas() {
   const { state, dispatch, setZoom, setPan, addNode, pushHistory } = useMindMap();
-  const { nodes, zoom, panX, panY, theme, selectedNodeId, showGrid } = state;
+  const { nodes, zoom, panX, panY, theme, selectedNodeId, showGrid, rootId } = state;
   const isDark = theme === 'dark';
   const canvasRef = useRef<HTMLDivElement>(null);
-  const isPanning = useRef(false);
+  const [isPanning, setIsPanning] = useState(false);
   const lastPos = useRef({ x: 0, y: 0 });
+  
+  // Use refs for zoom/pan to avoid re-attaching listeners
+  const zoomRef = useRef(zoom);
+  const panXRef = useRef(panX);
+  const panYRef = useRef(panY);
+  
+  useEffect(() => {
+    zoomRef.current = zoom;
+    panXRef.current = panX;
+    panYRef.current = panY;
+  }, [zoom, panX, panY]);
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    const newZoom = Math.max(0.2, Math.min(3, zoom + delta));
-    setZoom(newZoom);
-  }, [zoom, setZoom]);
+  // Wheel zoom handler with passive: false
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const currentZoom = zoomRef.current;
+      const currentPanX = panXRef.current;
+      const currentPanY = panYRef.current;
+      
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      const newZoom = Math.max(0.2, Math.min(3, currentZoom + delta));
+      
+      // Zoom towards mouse position
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
+      const zoomRatio = newZoom / currentZoom;
+      const newPanX = mouseX - (mouseX - currentPanX) * zoomRatio;
+      const newPanY = mouseY - (mouseY - currentPanY) * zoomRatio;
+      
+      setZoom(newZoom);
+      setPan(newPanX, newPanY);
+    };
+
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', handleWheel);
+  }, [setZoom, setPan]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // Only pan if clicking on canvas background
     if (e.target === canvasRef.current || (e.target as HTMLElement).tagName === 'svg') {
-      isPanning.current = true;
+      setIsPanning(true);
       lastPos.current = { x: e.clientX, y: e.clientY };
       dispatch({ type: 'SELECT_NODE', payload: { id: null } });
     }
   }, [dispatch]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (isPanning.current) {
+    if (isPanning) {
       const dx = e.clientX - lastPos.current.x;
       const dy = e.clientY - lastPos.current.y;
-      setPan(panX + dx, panY + dy);
+      setPan(panXRef.current + dx, panYRef.current + dy);
       lastPos.current = { x: e.clientX, y: e.clientY };
     }
-  }, [panX, panY, setPan]);
+  }, [isPanning, setPan]);
 
   const handleMouseUp = useCallback(() => {
-    isPanning.current = false;
+    setIsPanning(false);
   }, []);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     if (e.target === canvasRef.current || (e.target as HTMLElement).tagName === 'svg') {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (rect) {
-        const x = (e.clientX - rect.left - panX) / zoom;
-        const y = (e.clientY - rect.top - panY) / zoom;
+        const x = (e.clientX - rect.left - panXRef.current) / zoomRef.current;
+        const y = (e.clientY - rect.top - panYRef.current) / zoomRef.current;
         pushHistory('افزودن نود');
         addNode(null, 'ایده جدید', x, y);
       }
     }
-  }, [panX, panY, zoom, addNode, pushHistory]);
+  }, [addNode, pushHistory]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -67,39 +105,45 @@ export default function MindMapCanvas() {
         } else if (e.key === 'y') {
           e.preventDefault();
           dispatch({ type: 'REDO' });
-        } else if (e.key === '=') {
+        } else if (e.key === '=' || e.key === '+') {
           e.preventDefault();
-          setZoom(Math.min(3, zoom + 0.1));
+          setZoom(Math.min(3, zoomRef.current + 0.1));
         } else if (e.key === '-') {
           e.preventDefault();
-          setZoom(Math.max(0.2, zoom - 0.1));
+          setZoom(Math.max(0.2, zoomRef.current - 0.1));
         } else if (e.key === '0') {
           e.preventDefault();
           setZoom(1);
           setPan(0, 0);
         }
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (selectedNodeId && selectedNodeId !== state.rootId) {
+        if (state.selectedNodeId && state.selectedNodeId !== state.rootId) {
           e.preventDefault();
           pushHistory('حذف نود');
-          dispatch({ type: 'DELETE_NODE', payload: { id: selectedNodeId } });
+          dispatch({ type: 'DELETE_NODE', payload: { id: state.selectedNodeId } });
+        }
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        if (state.selectedNodeId) {
+          const node = state.nodes[state.selectedNodeId];
+          if (node) {
+            pushHistory('افزودن فرزند');
+            addNode(state.selectedNodeId, 'ایده جدید', node.x + 200, node.y);
+          }
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dispatch, zoom, selectedNodeId, state.rootId, setZoom, setPan, pushHistory]);
+  }, [dispatch, state.selectedNodeId, state.rootId, state.nodes, setZoom, setPan, pushHistory, addNode]);
 
   const nodeArray = Object.values(nodes);
 
   return (
     <div
       ref={canvasRef}
-      className={`absolute inset-0 overflow-hidden cursor-grab active:cursor-grabbing ${
-        isPanning.current ? 'cursor-grabbing' : ''
-      }`}
-      onWheel={handleWheel}
+      className={`absolute inset-0 overflow-hidden ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -112,7 +156,7 @@ export default function MindMapCanvas() {
         className="absolute inset-0 origin-top-left"
         style={{
           transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
-          transition: isPanning.current ? 'none' : 'transform 0.1s ease-out',
+          transition: isPanning ? 'none' : 'transform 0.1s ease-out',
         }}
       >
         {/* Connections */}

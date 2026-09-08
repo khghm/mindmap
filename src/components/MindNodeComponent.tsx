@@ -20,6 +20,12 @@ export default function MindNodeComponent({ node }: Props) {
   const dragRef = useRef({ startX: 0, startY: 0, nodeX: 0, nodeY: 0 });
   const inputRef = useRef<HTMLInputElement>(null);
   const nodeRef = useRef<HTMLDivElement>(null);
+  
+  // Use ref for zoom to avoid stale closure
+  const zoomRef = useRef(state.zoom);
+  useEffect(() => {
+    zoomRef.current = state.zoom;
+  }, [state.zoom]);
 
   const isSelected = state.selectedNodeId === node.id;
   const isRoot = state.rootId === node.id;
@@ -72,8 +78,9 @@ export default function MindNodeComponent({ node }: Props) {
     };
 
     const handleMouseMove = (ev: MouseEvent) => {
-      const dx = (ev.clientX - dragRef.current.startX) / state.zoom;
-      const dy = (ev.clientY - dragRef.current.startY) / state.zoom;
+      const currentZoom = zoomRef.current;
+      const dx = (ev.clientX - dragRef.current.startX) / currentZoom;
+      const dy = (ev.clientY - dragRef.current.startY) / currentZoom;
       updateNode(node.id, {
         x: dragRef.current.nodeX + dx,
         y: dragRef.current.nodeY + dy,
@@ -89,7 +96,7 @@ export default function MindNodeComponent({ node }: Props) {
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [isEditing, node.id, node.x, node.y, state.zoom, selectNode, updateNode, pushHistory]);
+  }, [isEditing, node.id, node.x, node.y, selectNode, updateNode, pushHistory]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
