@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useCallback, ReactNode, useRef } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, ReactNode, useRef, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { MindNode, Connection, MindMapState, HistoryEntry, LayoutType } from './types';
 
@@ -269,9 +269,59 @@ export function useMindMap(): MindMapContextType {
 export function MindMapProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const layoutApplied = useRef(false);
+  const stateRef = useRef(state);
+  
+  // Keep stateRef in sync with state
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   const addNode = useCallback((parentId: string | null, text = 'ایده جدید', x?: number, y?: number, emoji?: string): string => {
     const id = uuidv4();
+    const currentState = stateRef.current;
+    
+    // Calculate smart position if not provided
+    let finalX = x;
+    let finalY = y;
+    
+    if (parentId && (x === undefined || y === undefined)) {
+      const parent = currentState.nodes[parentId];
+      if (parent) {
+        // Count existing children
+        const existingChildren = Object.values(currentState.nodes).filter(n => n.parentId === parentId);
+        const childCount = existingChildren.length;
+        const totalChildren = childCount + 1; // Including new child
+        
+        // Calculate position based on number of children
+        const distance = 220; // Distance from parent center
+        const parentCenterX = parent.x + parent.width / 2;
+        const parentCenterY = parent.y + parent.height / 2;
+        
+        // Determine direction: if parent has its own parent, place children away from grandparent
+        let baseAngle = 0;
+        if (parent.parentId) {
+          const grandparent = currentState.nodes[parent.parentId];
+          if (grandparent) {
+            const gpCenterX = grandparent.x + grandparent.width / 2;
+            const gpCenterY = grandparent.y + grandparent.height / 2;
+            // Angle from grandparent to parent
+            baseAngle = Math.atan2(parentCenterY - gpCenterY, parentCenterX - gpCenterX);
+          }
+        }
+        
+        // Spread children in an arc around the parent
+        const arcSpread = Math.min(Math.PI * 0.8, Math.PI / 2 * totalChildren / 3);
+        const angleStep = totalChildren > 1 ? arcSpread / (totalChildren - 1) : 0;
+        const startAngle = baseAngle - arcSpread / 2;
+        
+        // Place new child at the appropriate position
+        const angle = startAngle + angleStep * childCount;
+        
+        finalX = parentCenterX + Math.cos(angle) * distance - 80; // 80 = half of new node width
+        finalY = parentCenterY + Math.sin(angle) * distance - 25; // 25 = half of new node height
+      }
+    }
+    
     const node: MindNode = {
       id,
       parentId,
@@ -281,8 +331,8 @@ export function MindMapProvider({ children }: { children: ReactNode }) {
       shape: parentId ? 'rounded' : 'pill',
       fontSize: parentId ? 14 : 18,
       fontWeight: parentId ? 'normal' : 'bold',
-      x: x ?? (Math.random() * 400 + 200),
-      y: y ?? (Math.random() * 300 + 200),
+      x: finalX ?? (Math.random() * 400 + 200),
+      y: finalY ?? (Math.random() * 300 + 200),
       width: parentId ? 160 : 200,
       height: parentId ? 50 : 60,
       collapsed: false,
@@ -372,115 +422,212 @@ export function MindMapProvider({ children }: { children: ReactNode }) {
     const newNodes = { ...state.nodes };
     const centerX = 600;
     const centerY = 400;
+    
+    // Helper: calculate subtree height (for vertical spacing)
+    const getSubtreeSize = (nodeId: string): number => {
+      const children = nodes.filter(n => n.parentId === nodeId);
+      if (children.length === 0) return 60; // Single node height
+      let totalHeight = 0;
+      children.forEach(child => {
+        totalHeight += getSubtreeSize(child.id) + 20; // 20px gap
+      });
+      return Math.max(60, totalHeight - 20); // Remove last gap
+    };
+    
+    // Helper: calculate subtree width (for horizontal spacing)
+    const getSubtreeWidth = (nodeId: string): number => {
+      const children = nodes.filter(n => n.parentId === nodeId);
+      if (children.length === 0) return 180;
+      let totalWidth = 0;
+      children.forEach(child => {
+        totalWidth += getSubtreeWidth(child.id) + 20;
+      });
+      return Math.max(180, totalWidth - 20);
+    };
 
     if (type === 'radial') {
-      newNodes[root.id] = { ...newNodes[root.id], x: centerX, y: centerY };
+      newNodes[root.id] = { ...newNodes[root.id], x: centerX - root.width / 2, y: centerY - root.height / 2 };
       const children = nodes.filter(n => n.parentId === root.id);
       const angleStep = (2 * Math.PI) / Math.max(children.length, 1);
       
       children.forEach((child, i) => {
         const angle = angleStep * i - Math.PI / 2;
-        const radius = 220;
+        const radius = 250;
         const cx = centerX + Math.cos(angle) * radius;
         const cy = centerY + Math.sin(angle) * radius;
         newNodes[child.id] = { ...newNodes[child.id], x: cx - child.width / 2, y: cy - child.height / 2 };
         
-        // Grandchildren
+        // Grandchildren - spread in arc away from center
         const grandChildren = nodes.filter(n => n.parentId === child.id);
-        const gcAngleStep = Math.PI * 0.6 / Math.max(grandChildren.length - 1, 1);
-        const gcStartAngle = angle - Math.PI * 0.3;
-        
-        grandChildren.forEach((gc, j) => {
-          const gcAngle = grandChildren.length === 1 ? angle : gcStartAngle + gcAngleStep * j;
+        if (grandChildren.length > 0) {
+          const gcArcSpread = Math.min(Math.PI * 0.8, Math.PI / 3 * grandChildren.length);
+          const gcAngleStep = grandChildren.length > 1 ? gcArcSpread / (grandChildren.length - 1) : 0;
+          const gcStartAngle = angle - gcArcSpread / 2;
           const gcRadius = 180;
-          const gcx = cx + Math.cos(gcAngle) * gcRadius;
-          const gcy = cy + Math.sin(gcAngle) * gcRadius;
-          newNodes[gc.id] = { ...newNodes[gc.id], x: gcx - gc.width / 2, y: gcy - gc.height / 2 };
-        });
+          
+          grandChildren.forEach((gc, j) => {
+            const gcAngle = gcStartAngle + gcAngleStep * j;
+            const gcx = cx + Math.cos(gcAngle) * gcRadius;
+            const gcy = cy + Math.sin(gcAngle) * gcRadius;
+            newNodes[gc.id] = { ...newNodes[gc.id], x: gcx - gc.width / 2, y: gcy - gc.height / 2 };
+          });
+        }
       });
     } else if (type === 'tree-right') {
-      newNodes[root.id] = { ...newNodes[root.id], x: centerX - 300, y: centerY };
+      newNodes[root.id] = { ...newNodes[root.id], x: centerX - 300 - root.width / 2, y: centerY - root.height / 2 };
       const children = nodes.filter(n => n.parentId === root.id);
       const leftChildren = children.slice(0, Math.ceil(children.length / 2));
       const rightChildren = children.slice(Math.ceil(children.length / 2));
       
-      rightChildren.forEach((child, i) => {
-        const cy = centerY + (i - (rightChildren.length - 1) / 2) * 100;
-        newNodes[child.id] = { ...newNodes[child.id], x: centerX, y: cy - child.height / 2 };
+      // Position right children with proper spacing
+      let rightY = centerY;
+      rightChildren.forEach(child => {
+        const subtreeHeight = getSubtreeSize(child.id);
+        rightY -= subtreeHeight / 2;
+        
+        newNodes[child.id] = { ...newNodes[child.id], x: centerX, y: rightY };
         
         const grandChildren = nodes.filter(n => n.parentId === child.id);
-        grandChildren.forEach((gc, j) => {
-          const gcy = cy + (j - (grandChildren.length - 1) / 2) * 60;
-          newNodes[gc.id] = { ...newNodes[gc.id], x: centerX + 250, y: gcy - gc.height / 2 };
+        let gcY = rightY;
+        grandChildren.forEach(gc => {
+          newNodes[gc.id] = { ...newNodes[gc.id], x: centerX + 250, y: gcY };
+          gcY += 60;
         });
+        
+        rightY += subtreeHeight + 20;
       });
       
-      leftChildren.forEach((child, i) => {
-        const cy = centerY + (i - (leftChildren.length - 1) / 2) * 100;
-        newNodes[child.id] = { ...newNodes[child.id], x: centerX - 500, y: cy - child.height / 2 };
+      // Position left children with proper spacing
+      let leftY = centerY;
+      leftChildren.forEach(child => {
+        const subtreeHeight = getSubtreeSize(child.id);
+        leftY -= subtreeHeight / 2;
+        
+        newNodes[child.id] = { ...newNodes[child.id], x: centerX - 500, y: leftY };
         
         const grandChildren = nodes.filter(n => n.parentId === child.id);
-        grandChildren.forEach((gc, j) => {
-          const gcy = cy + (j - (grandChildren.length - 1) / 2) * 60;
-          newNodes[gc.id] = { ...newNodes[gc.id], x: centerX - 750, y: gcy - gc.height / 2 };
+        let gcY = leftY;
+        grandChildren.forEach(gc => {
+          newNodes[gc.id] = { ...newNodes[gc.id], x: centerX - 750, y: gcY };
+          gcY += 60;
         });
+        
+        leftY += subtreeHeight + 20;
       });
-    } else if (type === 'tree-down') {
-      newNodes[root.id] = { ...newNodes[root.id], x: centerX, y: centerY - 200 };
+    } else if (type === 'tree-left') {
+      // Tree-left layout - root on right, children branching left
+      newNodes[root.id] = { ...newNodes[root.id], x: centerX + 300 - root.width / 2, y: centerY - root.height / 2 };
       const children = nodes.filter(n => n.parentId === root.id);
       
-      children.forEach((child, i) => {
-        const cx = centerX + (i - (children.length - 1) / 2) * 220;
+      // Position children with proper spacing
+      let currentY = centerY;
+      children.forEach(child => {
+        const subtreeHeight = getSubtreeSize(child.id);
+        currentY -= subtreeHeight / 2;
+        
+        newNodes[child.id] = { ...newNodes[child.id], x: centerX, y: currentY };
+        
+        const grandChildren = nodes.filter(n => n.parentId === child.id);
+        let gcY = currentY;
+        grandChildren.forEach(gc => {
+          newNodes[gc.id] = { ...newNodes[gc.id], x: centerX - 250, y: gcY };
+          gcY += 60;
+        });
+        
+        currentY += subtreeHeight + 20;
+      });
+    } else if (type === 'tree-down') {
+      newNodes[root.id] = { ...newNodes[root.id], x: centerX - root.width / 2, y: centerY - 200 };
+      const children = nodes.filter(n => n.parentId === root.id);
+      
+      // Calculate total width needed
+      let totalWidth = 0;
+      children.forEach(child => {
+        totalWidth += getSubtreeWidth(child.id) + 20;
+      });
+      totalWidth -= 20; // Remove last gap
+      
+      let currentX = centerX - totalWidth / 2;
+      children.forEach(child => {
+        const subtreeWidth = getSubtreeWidth(child.id);
+        const cx = currentX + subtreeWidth / 2;
+        
         newNodes[child.id] = { ...newNodes[child.id], x: cx - child.width / 2, y: centerY };
         
         const grandChildren = nodes.filter(n => n.parentId === child.id);
-        grandChildren.forEach((gc, j) => {
-          const gcx = cx + (j - (grandChildren.length - 1) / 2) * 160;
-          newNodes[gc.id] = { ...newNodes[gc.id], x: gcx - gc.width / 2, y: centerY + 150 };
+        let gcX = cx - (grandChildren.length - 1) * 80;
+        grandChildren.forEach(gc => {
+          newNodes[gc.id] = { ...newNodes[gc.id], x: gcX, y: centerY + 150 };
+          gcX += 160;
         });
+        
+        currentX += subtreeWidth + 20;
       });
     } else if (type === 'logic') {
       // Logic layout - root on left, children branching right
-      newNodes[root.id] = { ...newNodes[root.id], x: centerX - 300, y: centerY };
+      newNodes[root.id] = { ...newNodes[root.id], x: centerX - 300 - root.width / 2, y: centerY - root.height / 2 };
       const children = nodes.filter(n => n.parentId === root.id);
       
-      children.forEach((child, i) => {
-        const cy = centerY + (i - (children.length - 1) / 2) * 100;
-        newNodes[child.id] = { ...newNodes[child.id], x: centerX, y: cy - child.height / 2 };
+      // Position children with proper spacing
+      let currentY = centerY;
+      children.forEach(child => {
+        const subtreeHeight = getSubtreeSize(child.id);
+        currentY -= subtreeHeight / 2;
+        
+        newNodes[child.id] = { ...newNodes[child.id], x: centerX, y: currentY };
         
         const grandChildren = nodes.filter(n => n.parentId === child.id);
-        grandChildren.forEach((gc, j) => {
-          const gcy = cy + (j - (grandChildren.length - 1) / 2) * 60;
-          newNodes[gc.id] = { ...newNodes[gc.id], x: centerX + 250, y: gcy - gc.height / 2 };
+        let gcY = currentY;
+        grandChildren.forEach(gc => {
+          newNodes[gc.id] = { ...newNodes[gc.id], x: centerX + 250, y: gcY };
+          gcY += 60;
         });
+        
+        currentY += subtreeHeight + 20;
       });
     } else {
-      // Organic layout
-      newNodes[root.id] = { ...newNodes[root.id], x: centerX, y: centerY };
+      // Organic layout - improved to prevent overlapping
+      newNodes[root.id] = { ...newNodes[root.id], x: centerX - root.width / 2, y: centerY - root.height / 2 };
       const children = nodes.filter(n => n.parentId === root.id);
       const rightSide = children.filter((_, i) => i % 2 === 0);
       const leftSide = children.filter((_, i) => i % 2 !== 0);
       
-      rightSide.forEach((child, i) => {
-        const spread = (i - (rightSide.length - 1) / 2) * 110;
-        newNodes[child.id] = { ...newNodes[child.id], x: centerX + 250, y: centerY + spread - child.height / 2 };
+      // Position right side children
+      let rightY = centerY;
+      rightSide.forEach(child => {
+        const subtreeHeight = getSubtreeSize(child.id);
+        rightY -= subtreeHeight / 2;
         
+        newNodes[child.id] = { ...newNodes[child.id], x: centerX + 250, y: rightY };
+        
+        // Position grandchildren
         const grandChildren = nodes.filter(n => n.parentId === child.id);
-        grandChildren.forEach((gc, j) => {
-          const gcSpread = spread + (j - (grandChildren.length - 1) / 2) * 70;
-          newNodes[gc.id] = { ...newNodes[gc.id], x: centerX + 500, y: centerY + gcSpread - gc.height / 2 };
+        let gcY = rightY;
+        grandChildren.forEach(gc => {
+          newNodes[gc.id] = { ...newNodes[gc.id], x: centerX + 500, y: gcY };
+          gcY += 70;
         });
+        
+        rightY += subtreeHeight + 20; // 20px gap between subtrees
       });
       
-      leftSide.forEach((child, i) => {
-        const spread = (i - (leftSide.length - 1) / 2) * 110;
-        newNodes[child.id] = { ...newNodes[child.id], x: centerX - 410, y: centerY + spread - child.height / 2 };
+      // Position left side children
+      let leftY = centerY;
+      leftSide.forEach(child => {
+        const subtreeHeight = getSubtreeSize(child.id);
+        leftY -= subtreeHeight / 2;
         
+        newNodes[child.id] = { ...newNodes[child.id], x: centerX - 410, y: leftY };
+        
+        // Position grandchildren
         const grandChildren = nodes.filter(n => n.parentId === child.id);
-        grandChildren.forEach((gc, j) => {
-          const gcSpread = spread + (j - (grandChildren.length - 1) / 2) * 70;
-          newNodes[gc.id] = { ...newNodes[gc.id], x: centerX - 660, y: centerY + gcSpread - gc.height / 2 };
+        let gcY = leftY;
+        grandChildren.forEach(gc => {
+          newNodes[gc.id] = { ...newNodes[gc.id], x: centerX - 660, y: gcY };
+          gcY += 70;
         });
+        
+        leftY += subtreeHeight + 20; // 20px gap between subtrees
       });
     }
 
