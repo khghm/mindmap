@@ -7,7 +7,7 @@ import MiniMap from './MiniMap';
 
 export default function MindMapCanvas() {
   const { state, dispatch, setZoom, setPan, addNode, pushHistory } = useMindMap();
-  const { nodes, zoom, panX, panY, theme, selectedNodeId, showGrid, rootId } = state;
+  const { nodes, zoom, panX, panY, theme, selectedNodeId, rootId } = state;
   const isDark = theme === 'dark';
   const canvasRef = useRef<HTMLDivElement>(null);
   const [isPanning, setIsPanning] = useState(false);
@@ -24,7 +24,7 @@ export default function MindMapCanvas() {
     panYRef.current = panY;
   }, [zoom, panX, panY]);
 
-  // Wheel zoom handler with passive: false
+  // Wheel zoom - attach once with refs
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -37,8 +37,8 @@ export default function MindMapCanvas() {
       const currentPanX = panXRef.current;
       const currentPanY = panYRef.current;
       
-      const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      const newZoom = Math.max(0.2, Math.min(3, currentZoom + delta));
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      const newZoom = Math.max(0.2, Math.min(3, currentZoom * delta));
       
       // Zoom towards mouse position
       const rect = canvas.getBoundingClientRect();
@@ -53,13 +53,17 @@ export default function MindMapCanvas() {
       setPan(newPanX, newPanY);
     };
 
-    canvas.addEventListener('wheel', handleWheel, { passive: false });
-    return () => canvas.removeEventListener('wheel', handleWheel);
+    // Use capture phase to ensure we get the event first
+    canvas.addEventListener('wheel', handleWheel, { passive: false, capture: true });
+    return () => canvas.removeEventListener('wheel', handleWheel, { capture: true });
   }, [setZoom, setPan]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    // Only pan if clicking on canvas background
-    if (e.target === canvasRef.current || (e.target as HTMLElement).tagName === 'svg') {
+    // Only pan if clicking on canvas background (not on nodes)
+    const target = e.target as HTMLElement;
+    const isCanvas = target === canvasRef.current || target.tagName === 'svg';
+    
+    if (isCanvas) {
       setIsPanning(true);
       lastPos.current = { x: e.clientX, y: e.clientY };
       dispatch({ type: 'SELECT_NODE', payload: { id: null } });
@@ -80,7 +84,10 @@ export default function MindMapCanvas() {
   }, []);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
-    if (e.target === canvasRef.current || (e.target as HTMLElement).tagName === 'svg') {
+    const target = e.target as HTMLElement;
+    const isCanvas = target === canvasRef.current || target.tagName === 'svg';
+    
+    if (isCanvas) {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (rect) {
         const x = (e.clientX - rect.left - panXRef.current) / zoomRef.current;
@@ -143,7 +150,14 @@ export default function MindMapCanvas() {
   return (
     <div
       ref={canvasRef}
-      className={`absolute inset-0 overflow-hidden ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+      className="absolute inset-0"
+      style={{ 
+        overflow: 'hidden', 
+        cursor: isPanning ? 'grabbing' : 'grab',
+        width: '100%',
+        height: '100%',
+        zIndex: 1
+      }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -153,8 +167,11 @@ export default function MindMapCanvas() {
     >
       {/* Transform container */}
       <div
-        className="absolute inset-0 origin-top-left"
+        className="absolute top-0 left-0"
         style={{
+          width: '10000px',
+          height: '10000px',
+          transformOrigin: '0 0',
           transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
           transition: isPanning ? 'none' : 'transform 0.1s ease-out',
         }}

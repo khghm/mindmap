@@ -98,9 +98,9 @@
   background-size: 40px 40px;
 }
 
-/* Smooth transitions */
+/* Smooth transitions - exclude transform to avoid canvas issues */
 * {
-  transition-property: background-color, border-color, color, fill, stroke, opacity, box-shadow, transform;
+  transition-property: background-color, border-color, color, fill, stroke, opacity, box-shadow;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
 }

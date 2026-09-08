@@ -67,6 +67,7 @@ export default function MindNodeComponent({ node }: Props) {
     if (isEditing) return;
     e.stopPropagation();
     e.preventDefault();
+    e.nativeEvent.stopImmediatePropagation();
     
     selectNode(node.id);
     setIsDragging(true);

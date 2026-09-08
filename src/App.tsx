@@ -124,10 +124,10 @@ function MindMapApp() {
   return (
     <div className={`w-full h-screen overflow-hidden relative ${isDark ? 'bg-gradient-to-br from-slate-950 via-indigo-950 to-purple-950' : 'bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50'}`}>
       {/* Background mesh gradient */}
-      <div className={`absolute inset-0 ${isDark ? 'bg-gradient-mesh' : 'bg-gradient-mesh-light'}`} />
+      <div className={`absolute inset-0 pointer-events-none ${isDark ? 'bg-gradient-mesh' : 'bg-gradient-mesh-light'}`} />
       
       {/* Grid pattern */}
-      <div className={`absolute inset-0 ${isDark ? 'grid-pattern' : 'grid-pattern-light'}`} />
+      <div className={`absolute inset-0 pointer-events-none ${isDark ? 'grid-pattern' : 'grid-pattern-light'}`} />
 
       {/* Canvas */}
       <MindMapCanvas />

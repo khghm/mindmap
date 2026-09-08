@@ -10,8 +10,13 @@ export default function Connections() {
 
   return (
     <svg
-      className="absolute inset-0 w-full h-full pointer-events-none"
-      style={{ zIndex: 5 }}
+      className="absolute top-0 left-0 pointer-events-none"
+      style={{ 
+        width: '10000px', 
+        height: '10000px',
+        zIndex: 5,
+        overflow: 'visible'
+      }}
     >
       <defs>
         <filter id="glow">

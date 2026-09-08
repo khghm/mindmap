@@ -218,7 +218,7 @@ function reducer(state: MindMapState, action: Action): MindMapState {
       };
 
     case 'LOAD_STATE':
-      return { ...action.payload };
+      return { ...initialState, ...action.payload };
 
     case 'BATCH_UPDATE':
       return { ...state, nodes: action.payload.nodes, connections: action.payload.connections };
