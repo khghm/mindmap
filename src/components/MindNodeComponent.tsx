@@ -7,19 +7,25 @@ interface Props {
   node: MindNode;
 }
 
+const EMOJI_OPTIONS = ['💡', '🎯', '📌', '⭐', '🔥', '💎', '🚀', '🎨', '📊', '🔧', '✅', '❌', '⚡', '🌟', '🎪', '📝', '🧠', '💪', '🏆', '🎁'];
+
 export default function MindNodeComponent({ node }: Props) {
-  const { state, updateNode, selectNode, deleteNode, addNode, toggleCollapse } = useMindMap();
+  const { state, updateNode, selectNode, deleteNode, addNode, toggleCollapse, pushHistory } = useMindMap();
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(node.text);
-  const [isDragging, setIsDragging] = useState(false);
   const [showContextMenu, setShowContextMenu] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0, nodeX: 0, nodeY: 0 });
+  const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef({ startX: 0, startY: 0, nodeX: 0, nodeY: 0 });
   const inputRef = useRef<HTMLInputElement>(null);
   const nodeRef = useRef<HTMLDivElement>(null);
 
   const isSelected = state.selectedNodeId === node.id;
   const isRoot = state.rootId === node.id;
   const isDark = state.theme === 'dark';
+  const children = Object.values(state.nodes).filter(n => n.parentId === node.id);
+  const hasChildren = children.length > 0;
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -28,279 +34,323 @@ export default function MindNodeComponent({ node }: Props) {
     }
   }, [isEditing]);
 
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsEditing(true);
+    setEditText(node.text);
+  }, [node.text]);
+
+  const handleBlur = useCallback(() => {
+    setIsEditing(false);
+    if (editText.trim() && editText !== node.text) {
+      pushHistory('ویرایش متن');
+      updateNode(node.id, { text: editText.trim() });
+    }
+  }, [editText, node.text, node.id, updateNode, pushHistory]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleBlur();
+    } else if (e.key === 'Escape') {
+      setIsEditing(false);
+      setEditText(node.text);
+    }
+  }, [handleBlur, node.text]);
+
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (isEditing) return;
     e.stopPropagation();
     e.preventDefault();
     
+    selectNode(node.id);
     setIsDragging(true);
-    setDragStart({
-      x: e.clientX,
-      y: e.clientY,
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
       nodeX: node.x,
       nodeY: node.y,
-    });
-    selectNode(node.id);
+    };
 
-    const handleMouseMove = (e: MouseEvent) => {
-      const dx = (e.clientX - dragStart.x) / state.zoom;
-      const dy = (e.clientY - dragStart.y) / state.zoom;
+    const handleMouseMove = (ev: MouseEvent) => {
+      const dx = (ev.clientX - dragRef.current.startX) / state.zoom;
+      const dy = (ev.clientY - dragRef.current.startY) / state.zoom;
       updateNode(node.id, {
-        x: dragStart.nodeX + dx,
-        y: dragStart.nodeY + dy,
+        x: dragRef.current.nodeX + dx,
+        y: dragRef.current.nodeY + dy,
       });
     };
 
     const handleMouseUp = () => {
       setIsDragging(false);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      pushHistory('جابجایی نود');
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  }, [isEditing, node.id, node.x, node.y, state.zoom, selectNode, updateNode, dragStart]);
-
-  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditText(node.text);
-    setIsEditing(true);
-  }, [node.text]);
-
-  const handleEditSubmit = useCallback(() => {
-    if (editText.trim()) {
-      updateNode(node.id, { text: editText.trim() });
-    }
-    setIsEditing(false);
-  }, [editText, node.id, updateNode]);
-
-  const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [isEditing, node.id, node.x, node.y, state.zoom, selectNode, updateNode, pushHistory]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    selectNode(node.id);
     setContextMenuPos({ x: e.clientX, y: e.clientY });
     setShowContextMenu(true);
-    selectNode(node.id);
   }, [node.id, selectNode]);
 
   const handleAddChild = useCallback(() => {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 200;
+    const nx = node.x + Math.cos(angle) * dist;
+    const ny = node.y + Math.sin(angle) * dist;
+    pushHistory('افزودن نود فرزند');
+    const newId = addNode(node.id, 'ایده جدید', nx, ny);
     setShowContextMenu(false);
-    addNode(node.id, 'زیرموضوع');
-  }, [node.id, addNode]);
+  }, [node, addNode, pushHistory]);
 
   const handleDelete = useCallback(() => {
-    setShowContextMenu(false);
+    if (isRoot) return;
+    pushHistory('حذف نود');
     deleteNode(node.id);
-  }, [node.id, deleteNode]);
+    setShowContextMenu(false);
+  }, [node.id, isRoot, deleteNode, pushHistory]);
 
-  const getShapeClass = () => {
+  const handleToggleCollapse = useCallback(() => {
+    toggleCollapse(node.id);
+    setShowContextMenu(false);
+  }, [node.id, toggleCollapse]);
+
+  const handleSetEmoji = useCallback((emoji: string) => {
+    updateNode(node.id, { emoji });
+    setShowEmojiPicker(false);
+  }, [node.id, updateNode]);
+
+  const handleSetPriority = useCallback((priority: MindNode['priority']) => {
+    updateNode(node.id, { priority });
+    setShowContextMenu(false);
+  }, [node.id, updateNode]);
+
+  // Shape styles
+  const getShapeStyle = (): React.CSSProperties => {
     switch (node.shape) {
-      case 'ellipse': return 'rounded-full';
-      case 'rectangle': return 'rounded-sm';
-      case 'diamond': return 'rounded-sm rotate-0';
-      default: return 'rounded-2xl';
+      case 'pill':
+        return { borderRadius: '50px' };
+      case 'rectangle':
+        return { borderRadius: '4px' };
+      case 'diamond':
+        return { borderRadius: '4px', transform: 'rotate(0deg)' };
+      case 'hexagon':
+        return { borderRadius: '12px', clipPath: 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)' };
+      case 'cloud':
+        return { borderRadius: '40% 60% 60% 40% / 60% 40% 60% 40%' };
+      default:
+        return { borderRadius: '12px' };
     }
   };
 
-  const hasChildren = node.children.length > 0;
+  const priorityColors = {
+    low: '#22c55e',
+    medium: '#f59e0b',
+    high: '#ef4444',
+    critical: '#dc2626',
+  };
 
   return (
     <>
       <motion.div
         ref={nodeRef}
-        className={`absolute select-none ${isDragging ? 'z-50' : 'z-10'}`}
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+        className={`absolute cursor-move select-none group ${isDragging ? 'z-50' : 'z-10'}`}
         style={{
           left: node.x,
           top: node.y,
-          minWidth: node.width,
+          width: node.width,
+          minHeight: node.height,
         }}
-        initial={{ scale: 0, opacity: 0 }}
-        animate={{ 
-          scale: 1, 
-          opacity: 1,
-          y: isDragging ? -2 : 0,
-        }}
-        exit={{ scale: 0, opacity: 0 }}
-        transition={{ type: 'spring', stiffness: 300, damping: 25 }}
         onMouseDown={handleMouseDown}
         onDoubleClick={handleDoubleClick}
         onContextMenu={handleContextMenu}
-        onClick={(e) => { e.stopPropagation(); selectNode(node.id); }}
+        whileHover={{ scale: 1.03 }}
+        whileTap={{ scale: 0.98 }}
       >
-        {/* Node Container */}
+        {/* Node body */}
         <div
-          className={`
-            relative px-5 py-3 cursor-grab active:cursor-grabbing
-            transition-all duration-200
-            ${getShapeClass()}
-            ${isSelected ? 'ring-2 ring-offset-2 scale-105' : 'hover:scale-[1.02]'}
-            ${isRoot ? 'shadow-2xl' : 'shadow-lg'}
-            ${isDark ? 'ring-offset-gray-900' : 'ring-offset-gray-50'}
-          `}
+          className={`relative w-full h-full flex items-center justify-center px-4 py-3 transition-all duration-200 ${
+            isSelected ? 'ring-2 ring-yellow-400 ring-offset-2' : ''
+          } ${isDark ? 'ring-offset-gray-900' : 'ring-offset-white'}`}
           style={{
-            background: isRoot
-              ? `linear-gradient(135deg, ${node.color}, ${node.color}dd)`
-              : isDark
-                ? `linear-gradient(135deg, ${node.color}22, ${node.color}11)`
-                : `linear-gradient(135deg, ${node.color}15, ${node.color}08)`,
-            border: `2px solid ${node.color}${isDark ? '88' : '66'}`,
+            background: `linear-gradient(135deg, ${node.color}, ${node.color}dd)`,
+            ...getShapeStyle(),
             boxShadow: isSelected
-              ? `0 0 20px ${node.color}44, 0 8px 32px rgba(0,0,0,0.3)`
-              : `0 4px 16px ${node.color}22`,
+              ? `0 0 30px ${node.color}66, 0 8px 32px rgba(0,0,0,0.3)`
+              : `0 4px 20px ${node.color}33, 0 2px 8px rgba(0,0,0,0.2)`,
           }}
         >
-          {/* Glow effect for root */}
-          {isRoot && (
+          {/* Priority indicator */}
+          {node.priority && (
             <div
-              className="absolute inset-0 rounded-2xl opacity-30 blur-xl -z-10"
-              style={{ background: node.color }}
+              className="absolute -top-1 -right-1 w-4 h-4 rounded-full border-2 border-white/50"
+              style={{ backgroundColor: priorityColors[node.priority] }}
+              title={`اولویت: ${node.priority}`}
             />
           )}
 
-          {/* Content */}
-          <div className="flex items-center gap-2">
-            {isEditing ? (
-              <input
-                ref={inputRef}
-                type="text"
-                value={editText}
-                onChange={(e) => setEditText(e.target.value)}
-                onBlur={handleEditSubmit}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleEditSubmit();
-                  if (e.key === 'Escape') setIsEditing(false);
-                }}
-                className={`
-                  bg-transparent border-none outline-none text-center w-full
-                  ${isDark ? 'text-white' : 'text-gray-900'}
-                `}
-                style={{ fontSize: node.fontSize, fontWeight: isRoot ? 700 : 500 }}
-                dir="rtl"
+          {/* Progress bar */}
+          {node.progress !== undefined && node.progress > 0 && (
+            <div className="absolute bottom-0 left-0 right-0 h-1 rounded-full overflow-hidden bg-black/20">
+              <div
+                className="h-full bg-white/60 transition-all duration-500"
+                style={{ width: `${node.progress}%` }}
               />
-            ) : (
+            </div>
+          )}
+
+          {/* Content */}
+          {isEditing ? (
+            <input
+              ref={inputRef}
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              onBlur={handleBlur}
+              onKeyDown={handleKeyDown}
+              className="w-full bg-transparent text-center text-white outline-none border-b border-white/50"
+              style={{ fontSize: node.fontSize }}
+              dir="rtl"
+            />
+          ) : (
+            <div className="flex items-center gap-2 text-white text-center" dir="rtl">
+              {node.emoji && <span className="text-lg">{node.emoji}</span>}
               <span
-                className={`
-                  whitespace-nowrap text-center block w-full
-                  ${isDark ? 'text-white' : 'text-gray-900'}
-                `}
-                style={{ fontSize: node.fontSize, fontWeight: isRoot ? 700 : 500 }}
+                className="font-medium leading-tight break-words"
+                style={{ fontSize: node.fontSize, fontWeight: node.fontWeight || 'normal' }}
               >
-                {node.icon && <span className="ml-1">{node.icon}</span>}
                 {node.text}
               </span>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Collapse button */}
           {hasChildren && (
             <button
-              className={`
-                absolute -bottom-3 left-1/2 -translate-x-1/2
-                w-6 h-6 rounded-full flex items-center justify-center
-                text-xs font-bold transition-all
-                ${isDark ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-white text-gray-600 hover:bg-gray-100'}
-                shadow-md border ${isDark ? 'border-gray-600' : 'border-gray-300'}
+              onClick={(e) => { e.stopPropagation(); handleToggleCollapse(); }}
+              className={`absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all
+                ${isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-white text-gray-600 hover:bg-gray-100'}
+                shadow-md border ${isDark ? 'border-gray-600' : 'border-gray-200'}
               `}
-              onClick={(e) => { e.stopPropagation(); toggleCollapse(node.id); }}
-              style={{ borderColor: node.color }}
             >
-              {node.collapsed ? '+' : node.children.length}
+              {node.collapsed ? '+' : '−'}
             </button>
           )}
 
-          {/* Selection indicator */}
-          {isSelected && (
-            <motion.div
-              className="absolute -inset-1 rounded-2xl border-2 border-dashed pointer-events-none"
-              style={{ borderColor: node.color }}
-              animate={{ opacity: [0.5, 1, 0.5] }}
-              transition={{ duration: 2, repeat: Infinity }}
-            />
+          {/* Add child button (on hover) */}
+          {!isEditing && (
+            <button
+              onClick={(e) => { e.stopPropagation(); handleAddChild(); }}
+              className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-green-500 text-white flex items-center justify-center text-sm opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-green-400"
+            >
+              +
+            </button>
           )}
         </div>
 
-        {/* Quick add button on hover */}
-        <motion.button
-          className={`
-            absolute -right-3 top-1/2 -translate-y-1/2
-            w-7 h-7 rounded-full flex items-center justify-center
-            opacity-0 group-hover:opacity-100 transition-all
-            shadow-lg
-          `}
-          style={{
-            background: node.color,
-            opacity: isSelected ? 1 : undefined,
-          }}
-          initial={{ scale: 0 }}
-          animate={{ scale: isSelected ? 1 : 0 }}
-          onClick={(e) => { e.stopPropagation(); addNode(node.id, 'زیرموضوع'); }}
-        >
-          <i className="fas fa-plus text-white text-xs"></i>
-        </motion.button>
+        {/* Emoji picker */}
+        <AnimatePresence>
+          {showEmojiPicker && (
+            <motion.div
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0, opacity: 0 }}
+              className={`absolute top-full mt-2 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-2xl grid grid-cols-5 gap-1 z-50 ${
+                isDark ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'
+              }`}
+            >
+              {EMOJI_OPTIONS.map(emoji => (
+                <button
+                  key={emoji}
+                  onClick={(e) => { e.stopPropagation(); handleSetEmoji(emoji); }}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors text-lg"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
 
       {/* Context Menu */}
       <AnimatePresence>
         {showContextMenu && (
           <>
-            <div
-              className="fixed inset-0 z-[999]"
-              onClick={() => setShowContextMenu(false)}
-            />
+            <div className="fixed inset-0 z-40" onClick={() => setShowContextMenu(false)} />
             <motion.div
-              className={`
-                fixed z-[1000] min-w-[200px] rounded-xl shadow-2xl overflow-hidden
-                ${isDark ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'}
-              `}
-              initial={{ scale: 0.9, opacity: 0 }}
+              initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              style={{
-                left: contextMenuPos.x,
-                top: contextMenuPos.y,
-              }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              className={`fixed z-50 rounded-xl shadow-2xl overflow-hidden min-w-[200px] ${
+                isDark ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'
+              }`}
+              style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
             >
-              <button
-                className={`w-full px-4 py-2.5 text-right flex items-center gap-3 transition-colors ${isDark ? 'hover:bg-gray-700 text-gray-200' : 'hover:bg-gray-50 text-gray-700'}`}
-                onClick={handleAddChild}
-              >
-                <i className="fas fa-plus-circle text-green-500"></i>
-                <span>افزودن زیرموضوع</span>
-              </button>
-              <button
-                className={`w-full px-4 py-2.5 text-right flex items-center gap-3 transition-colors ${isDark ? 'hover:bg-gray-700 text-gray-200' : 'hover:bg-gray-50 text-gray-700'}`}
-                onClick={() => { setShowContextMenu(false); setEditText(node.text); setIsEditing(true); }}
-              >
-                <i className="fas fa-edit text-blue-500"></i>
-                <span>ویرایش</span>
-              </button>
-              <button
-                className={`w-full px-4 py-2.5 text-right flex items-center gap-3 transition-colors ${isDark ? 'hover:bg-gray-700 text-gray-200' : 'hover:bg-gray-50 text-gray-700'}`}
-                onClick={() => {
-                  setShowContextMenu(false);
-                  const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316', '#22c55e', '#06b6d4', '#3b82f6'];
-                  const newColor = colors[Math.floor(Math.random() * colors.length)];
-                  updateNode(node.id, { color: newColor });
-                }}
-              >
-                <i className="fas fa-palette text-purple-500"></i>
-                <span>تغییر رنگ</span>
-              </button>
-              <div className={`h-px ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}></div>
-              {!isRoot && (
-                <button
-                  className={`w-full px-4 py-2.5 text-right flex items-center gap-3 transition-colors ${isDark ? 'hover:bg-red-900/30 text-red-400' : 'hover:bg-red-50 text-red-600'}`}
-                  onClick={handleDelete}
-                >
-                  <i className="fas fa-trash-alt"></i>
-                  <span>حذف</span>
-                </button>
-              )}
+              <div className="p-1">
+                <ContextMenuItem icon="✏️" label="ویرایش" onClick={() => { setIsEditing(true); setShowContextMenu(false); }} isDark={isDark} />
+                <ContextMenuItem icon="➕" label="افزودن فرزند" onClick={handleAddChild} isDark={isDark} />
+                <ContextMenuItem icon="📋" label="تکرار" onClick={() => { pushHistory('تکرار نود'); updateNode(node.id, {}); setShowContextMenu(false); }} isDark={isDark} />
+                <ContextMenuItem icon="🎭" label="انتخاب ایموجی" onClick={() => { setShowEmojiPicker(true); setShowContextMenu(false); }} isDark={isDark} />
+                
+                <div className={`my-1 border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`} />
+                
+                <div className={`px-3 py-1.5 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>اولویت:</div>
+                <ContextMenuItem icon="🟢" label="کم" onClick={() => handleSetPriority('low')} isDark={isDark} />
+                <ContextMenuItem icon="🟡" label="متوسط" onClick={() => handleSetPriority('medium')} isDark={isDark} />
+                <ContextMenuItem icon="🔴" label="بالا" onClick={() => handleSetPriority('high')} isDark={isDark} />
+                <ContextMenuItem icon="⚫" label="بحرانی" onClick={() => handleSetPriority('critical')} isDark={isDark} />
+                
+                {hasChildren && (
+                  <>
+                    <div className={`my-1 border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`} />
+                    <ContextMenuItem
+                      icon={node.collapsed ? '📂' : '📁'}
+                      label={node.collapsed ? 'باز کردن شاخه' : 'بستن شاخه'}
+                      onClick={handleToggleCollapse}
+                      isDark={isDark}
+                    />
+                  </>
+                )}
+                
+                {!isRoot && (
+                  <>
+                    <div className={`my-1 border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`} />
+                    <ContextMenuItem icon="🗑️" label="حذف" onClick={handleDelete} isDark={isDark} danger />
+                  </>
+                )}
+              </div>
             </motion.div>
           </>
         )}
       </AnimatePresence>
     </>
+  );
+}
+
+function ContextMenuItem({ icon, label, onClick, isDark, danger }: {
+  icon: string; label: string; onClick: () => void; isDark: boolean; danger?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors text-right ${
+        danger
+          ? isDark ? 'text-red-400 hover:bg-red-900/30' : 'text-red-600 hover:bg-red-50'
+          : isDark ? 'text-gray-200 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'
+      }`}
+    >
+      <span>{icon}</span>
+      <span>{label}</span>
+    </button>
   );
 }

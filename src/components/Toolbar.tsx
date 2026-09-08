@@ -1,301 +1,298 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMindMap } from '../MindMapContext';
+import { LayoutType, Connection } from '../types';
 
 export default function Toolbar() {
-  const { state, addNode, deleteNode, autoLayout, toggleTheme, saveToStorage, loadFromStorage, exportAsJSON, importFromJSON, setLayout } = useMindMap();
-  const [showExport, setShowExport] = useState(false);
-  const [showImport, setShowImport] = useState(false);
-  const [importText, setImportText] = useState('');
+  const { state, dispatch, addNode, pushHistory, autoLayout, undo, redo, canUndo, canRedo, exportJSON, importJSON, exportAsImage } = useMindMap();
+  const { theme, layout, connectionStyle, showGrid, showMiniMap, zoom } = state;
+  const isDark = theme === 'dark';
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const isDark = state.theme === 'dark';
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
-  const handleExport = () => {
-    const json = exportAsJSON();
+  const handleAddRoot = () => {
+    if (!state.rootId) {
+      pushHistory('افزودن نود ریشه');
+      addNode(null, '🧠 ایده مرکزی', 600, 400);
+    }
+  };
+
+  const handleLayoutChange = (newLayout: LayoutType) => {
+    dispatch({ type: 'SET_LAYOUT', payload: { layout: newLayout } });
+    pushHistory(`تغییر چیدمان به ${newLayout}`);
+    autoLayout(newLayout);
+    setShowLayoutMenu(false);
+  };
+
+  const handleExportJSON = () => {
+    const json = exportJSON();
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'mindmap.json';
+    a.download = `mindmap-${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    setShowExport(false);
+    setShowExportMenu(false);
   };
 
-  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
+  const handleImportJSON = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
       const reader = new FileReader();
       reader.onload = (ev) => {
-        const text = ev.target?.result as string;
-        importFromJSON(text);
+        const json = ev.target?.result as string;
+        pushHistory('وارد کردن نقشه');
+        importJSON(json);
       };
       reader.readAsText(file);
-    }
+    };
+    input.click();
+    setShowExportMenu(false);
   };
 
-  const handleImportText = () => {
-    if (importText.trim()) {
-      importFromJSON(importText);
-      setImportText('');
-      setShowImport(false);
-    }
-  };
+  const layouts: { id: LayoutType; icon: string; label: string }[] = [
+    { id: 'organic', icon: '🌿', label: 'ارگانیک' },
+    { id: 'radial', icon: '🔵', label: 'شعاعی' },
+    { id: 'tree-right', icon: '🌳', label: 'درختی راست' },
+    { id: 'tree-down', icon: '🌲', label: 'درختی پایین' },
+  ];
 
-  const handleSave = () => {
-    saveToStorage();
-  };
-
-  const handleLoad = () => {
-    loadFromStorage();
-  };
-
-  const btnClass = `px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-    isDark 
-      ? 'hover:bg-gray-700/50 text-gray-300' 
-      : 'hover:bg-gray-100 text-gray-700'
-  }`;
+  const connStyles: { id: Connection['style']; icon: string; label: string }[] = [
+    { id: 'bezier', icon: '〰️', label: 'منحنی' },
+    { id: 'straight', icon: '📏', label: 'مستقیم' },
+    { id: 'step', icon: '📐', label: 'پلکانی' },
+    { id: 'smooth', icon: '🌊', label: 'نرم' },
+  ];
 
   return (
-    <>
-      <motion.div
-        className={`absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 px-3 py-2 rounded-2xl shadow-2xl border ${
-          isDark 
-            ? 'bg-gray-800/95 border-gray-700 backdrop-blur-md' 
-            : 'bg-white/95 border-gray-200 backdrop-blur-md'
-        }`}
-        initial={{ y: -50, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-      >
-        {/* Logo */}
-        <div className="flex items-center gap-2 pl-3 border-l border-gray-600/30 ml-1">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-            <i className="fas fa-brain text-white text-sm"></i>
-          </div>
-          <span className={`font-bold text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            MindFlow
-          </span>
-        </div>
+    <div className={`absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 px-3 py-2 rounded-2xl shadow-2xl backdrop-blur-xl border ${
+      isDark ? 'bg-gray-900/80 border-gray-700/50' : 'bg-white/80 border-gray-200/50'
+    }`}>
+      {/* Undo/Redo */}
+      <ToolbarButton
+        icon="↩️"
+        label="بازگشت"
+        onClick={undo}
+        disabled={!canUndo}
+        isDark={isDark}
+      />
+      <ToolbarButton
+        icon="↪️"
+        label="جلو"
+        onClick={redo}
+        disabled={!canRedo}
+        isDark={isDark}
+      />
 
-        {/* Add Node */}
-        <button
-          className={btnClass}
-          onClick={() => addNode(state.selectedNodeId, 'ایده جدید')}
-          title="افزودن نود (Ctrl+N)"
-        >
-          <i className="fas fa-plus text-green-500"></i>
-          <span className="hidden md:inline">افزودن</span>
-        </button>
+      <Divider isDark={isDark} />
 
-        {/* Delete */}
-        {state.selectedNodeId && state.selectedNodeId !== state.rootId && (
-          <button
-            className={btnClass}
-            onClick={() => deleteNode(state.selectedNodeId!)}
-            title="حذف (Delete)"
-          >
-            <i className="fas fa-trash text-red-500"></i>
-            <span className="hidden md:inline">حذف</span>
-          </button>
-        )}
+      {/* Add node */}
+      <ToolbarButton
+        icon="➕"
+        label="نود ریشه"
+        onClick={handleAddRoot}
+        isDark={isDark}
+        disabled={!!state.rootId}
+      />
 
-        {/* Divider */}
-        <div className={`w-px h-6 ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}></div>
+      <Divider isDark={isDark} />
 
-        {/* Auto Layout */}
-        <div className="relative">
-          <button
-            className={btnClass}
-            onClick={() => setShowLayoutMenu(!showLayoutMenu)}
-            title="چیدمان خودکار"
-          >
-            <i className="fas fa-sitemap text-blue-500"></i>
-            <span className="hidden md:inline">چیدمان</span>
-          </button>
-          <AnimatePresence>
-            {showLayoutMenu && (
-              <motion.div
-                className={`absolute top-full mt-2 right-0 min-w-[160px] rounded-xl shadow-xl border overflow-hidden ${
-                  isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-                }`}
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-              >
-                {[
-                  { key: 'organic', label: 'ارگانیک', icon: 'fa-circle-nodes' },
-                  { key: 'tree-right', label: 'درختی (راست)', icon: 'fa-arrow-right' },
-                  { key: 'tree-left', label: 'درختی (چپ)', icon: 'fa-arrow-left' },
-                  { key: 'radial', label: 'شعاعی', icon: 'fa-bullseye' },
-                ].map(item => (
-                  <button
-                    key={item.key}
-                    className={`w-full px-4 py-2.5 text-right flex items-center gap-3 transition-colors ${
-                      isDark ? 'hover:bg-gray-700 text-gray-200' : 'hover:bg-gray-50 text-gray-700'
-                    } ${state.layout === item.key ? (isDark ? 'bg-gray-700' : 'bg-gray-100') : ''}`}
-                    onClick={() => {
-                      setLayout(item.key as any);
-                      autoLayout();
-                      setShowLayoutMenu(false);
-                    }}
-                  >
-                    <i className={`fas ${item.icon} text-indigo-500`}></i>
-                    <span>{item.label}</span>
-                  </button>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Divider */}
-        <div className={`w-px h-6 ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}></div>
-
-        {/* Save */}
-        <button className={btnClass} onClick={handleSave} title="ذخیره">
-          <i className="fas fa-save text-emerald-500"></i>
-          <span className="hidden md:inline">ذخیره</span>
-        </button>
-
-        {/* Load */}
-        <button className={btnClass} onClick={handleLoad} title="بارگذاری">
-          <i className="fas fa-folder-open text-amber-500"></i>
-          <span className="hidden md:inline">بارگذاری</span>
-        </button>
-
-        {/* Export */}
-        <button className={btnClass} onClick={() => setShowExport(true)} title="خروجی">
-          <i className="fas fa-download text-cyan-500"></i>
-          <span className="hidden md:inline">خروجی</span>
-        </button>
-
-        {/* Import */}
-        <button className={btnClass} onClick={() => setShowImport(true)} title="ورودی">
-          <i className="fas fa-upload text-violet-500"></i>
-          <span className="hidden md:inline">ورودی</span>
-        </button>
-
-        {/* Divider */}
-        <div className={`w-px h-6 ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}></div>
-
-        {/* Theme Toggle */}
-        <button className={btnClass} onClick={toggleTheme} title="تغییر تم">
-          <i className={`fas ${isDark ? 'fa-sun text-yellow-400' : 'fa-moon text-indigo-500'}`}></i>
-        </button>
-      </motion.div>
-
-      {/* Export Modal */}
-      <AnimatePresence>
-        {showExport && (
-          <Modal isDark={isDark} onClose={() => setShowExport(false)} title="خروجی گرفتن">
-            <div className="space-y-3">
-              <button
-                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
-                onClick={handleExport}
-              >
-                <i className="fas fa-file-export"></i>
-                دانلود فایل JSON
-              </button>
-              <button
-                className={`w-full py-3 px-4 rounded-xl font-medium transition-colors flex items-center justify-center gap-2 ${
-                  isDark ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-                onClick={() => {
-                  navigator.clipboard.writeText(exportAsJSON());
-                  setShowExport(false);
-                }}
-              >
-                <i className="fas fa-copy"></i>
-                کپی در کلیپبورد
-              </button>
-            </div>
-          </Modal>
-        )}
-      </AnimatePresence>
-
-      {/* Import Modal */}
-      <AnimatePresence>
-        {showImport && (
-          <Modal isDark={isDark} onClose={() => setShowImport(false)} title="وارد کردن نقشه">
-            <div className="space-y-3">
-              <button
-                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <i className="fas fa-file-import"></i>
-                انتخاب فایل JSON
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json"
-                className="hidden"
-                onChange={handleImportFile}
-              />
-              <div className="relative">
-                <textarea
-                  className={`w-full h-32 rounded-xl p-3 text-sm resize-none border ${
-                    isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
+      {/* Layout */}
+      <div className="relative">
+        <ToolbarButton
+          icon="📐"
+          label="چیدمان"
+          onClick={() => { setShowLayoutMenu(!showLayoutMenu); setShowExportMenu(false); }}
+          isDark={isDark}
+          active={showLayoutMenu}
+        />
+        <AnimatePresence>
+          {showLayoutMenu && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className={`absolute top-full mt-2 left-1/2 -translate-x-1/2 rounded-xl shadow-2xl overflow-hidden min-w-[180px] ${
+                isDark ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'
+              }`}
+            >
+              {layouts.map(l => (
+                <button
+                  key={l.id}
+                  onClick={() => handleLayoutChange(l.id)}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                    layout === l.id
+                      ? isDark ? 'bg-indigo-600/30 text-indigo-300' : 'bg-indigo-50 text-indigo-700'
+                      : isDark ? 'text-gray-200 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50'
                   }`}
-                  placeholder="یا JSON را اینجا پیست کنید..."
-                  value={importText}
-                  onChange={(e) => setImportText(e.target.value)}
-                  dir="ltr"
-                />
-              </div>
-              <button
-                className="w-full py-2.5 px-4 rounded-xl bg-emerald-500 text-white font-medium hover:bg-emerald-600 transition-colors"
-                onClick={handleImportText}
-                disabled={!importText.trim()}
-              >
-                وارد کردن
-              </button>
-            </div>
-          </Modal>
-        )}
-      </AnimatePresence>
-
-      {/* Keyboard Shortcuts Help */}
-      <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-        <span><kbd className={`px-1.5 py-0.5 rounded ${isDark ? 'bg-gray-800' : 'bg-gray-100'}`}>Ctrl+Click</kbd> افزودن</span>
-        <span><kbd className={`px-1.5 py-0.5 rounded ${isDark ? 'bg-gray-800' : 'bg-gray-100'}`}>DblClick</kbd> ویرایش</span>
-        <span><kbd className={`px-1.5 py-0.5 rounded ${isDark ? 'bg-gray-800' : 'bg-gray-100'}`}>RightClick</kbd> منو</span>
-        <span><kbd className={`px-1.5 py-0.5 rounded ${isDark ? 'bg-gray-800' : 'bg-gray-100'}`}>Scroll</kbd> زوم</span>
+                >
+                  <span>{l.icon}</span>
+                  <span>{l.label}</span>
+                  {layout === l.id && <span className="ml-auto text-xs">✓</span>}
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
-    </>
+
+      {/* Connection Style */}
+      <div className="relative">
+        <ToolbarButton
+          icon="🔗"
+          label="سبک اتصال"
+          onClick={() => {
+            const styles: Connection['style'][] = ['bezier', 'straight', 'step', 'smooth'];
+            const idx = styles.indexOf(connectionStyle);
+            const next = styles[(idx + 1) % styles.length];
+            dispatch({ type: 'SET_CONNECTION_STYLE', payload: { style: next } });
+          }}
+          isDark={isDark}
+        />
+      </div>
+
+      <Divider isDark={isDark} />
+
+      {/* Grid toggle */}
+      <ToolbarButton
+        icon="⊞"
+        label="شبکه"
+        onClick={() => dispatch({ type: 'TOGGLE_GRID' })}
+        isDark={isDark}
+        active={showGrid}
+      />
+
+      {/* MiniMap toggle */}
+      <ToolbarButton
+        icon="🗺️"
+        label="نقشه کوچک"
+        onClick={() => dispatch({ type: 'TOGGLE_MINIMAP' })}
+        isDark={isDark}
+        active={showMiniMap}
+      />
+
+      <Divider isDark={isDark} />
+
+      {/* Zoom controls */}
+      <ToolbarButton
+        icon="🔍"
+        label="کوچک‌نمایی"
+        onClick={() => dispatch({ type: 'SET_ZOOM', payload: { zoom: zoom - 0.15 } })}
+        isDark={isDark}
+      />
+      <ToolbarButton
+        icon="🔎"
+        label="بزرگ‌نمایی"
+        onClick={() => dispatch({ type: 'SET_ZOOM', payload: { zoom: zoom + 0.15 } })}
+        isDark={isDark}
+      />
+      <ToolbarButton
+        icon="1:1"
+        label="اندازه واقعی"
+        onClick={() => {
+          dispatch({ type: 'SET_ZOOM', payload: { zoom: 1 } });
+          dispatch({ type: 'SET_PAN', payload: { panX: 0, panY: 0 } });
+        }}
+        isDark={isDark}
+      />
+
+      <Divider isDark={isDark} />
+
+      {/* Theme toggle */}
+      <ToolbarButton
+        icon={isDark ? '☀️' : '🌙'}
+        label="تم"
+        onClick={() => dispatch({ type: 'TOGGLE_THEME' })}
+        isDark={isDark}
+      />
+
+      {/* Export/Import */}
+      <div className="relative">
+        <ToolbarButton
+          icon="💾"
+          label="ذخیره/بارگذاری"
+          onClick={() => { setShowExportMenu(!showExportMenu); setShowLayoutMenu(false); }}
+          isDark={isDark}
+          active={showExportMenu}
+        />
+        <AnimatePresence>
+          {showExportMenu && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className={`absolute top-full mt-2 right-0 rounded-xl shadow-2xl overflow-hidden min-w-[180px] ${
+                isDark ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'
+              }`}
+            >
+              <button
+                onClick={handleExportJSON}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                  isDark ? 'text-gray-200 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <span>📤</span>
+                <span>خروجی JSON</span>
+              </button>
+              <button
+                onClick={handleImportJSON}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                  isDark ? 'text-gray-200 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <span>📥</span>
+                <span>وارد کردن JSON</span>
+              </button>
+              <button
+                onClick={() => { exportAsImage(); setShowExportMenu(false); }}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                  isDark ? 'text-gray-200 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <span>🖼️</span>
+                <span>خروجی تصویر</span>
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
   );
 }
 
-function Modal({ children, isDark, onClose, title }: { children: React.ReactNode; isDark: boolean; onClose: () => void; title: string }) {
+function ToolbarButton({ icon, label, onClick, isDark, disabled, active }: {
+  icon: string;
+  label: string;
+  onClick: () => void;
+  isDark: boolean;
+  disabled?: boolean;
+  active?: boolean;
+}) {
   return (
-    <motion.div
-      className="fixed inset-0 z-[2000] flex items-center justify-center"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      className={`relative px-2.5 py-2 rounded-xl text-sm transition-all duration-200 ${
+        disabled
+          ? 'opacity-30 cursor-not-allowed'
+          : active
+            ? isDark ? 'bg-indigo-600/30 text-indigo-300' : 'bg-indigo-100 text-indigo-700'
+            : isDark ? 'text-gray-300 hover:bg-gray-700/50 hover:text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+      }`}
     >
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose}></div>
-      <motion.div
-        className={`relative z-10 w-full max-w-md mx-4 rounded-2xl shadow-2xl p-6 ${
-          isDark ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'
-        }`}
-        initial={{ scale: 0.9, y: 20 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.9, y: 20 }}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h3 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{title}</h3>
-          <button
-            onClick={onClose}
-            className={`w-8 h-8 rounded-lg flex items-center justify-center ${isDark ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
-          >
-            <i className="fas fa-times"></i>
-          </button>
-        </div>
-        {children}
-      </motion.div>
-    </motion.div>
+      <span className="text-base">{icon}</span>
+    </button>
+  );
+}
+
+function Divider({ isDark }: { isDark: boolean }) {
+  return (
+    <div className={`w-px h-6 mx-1 ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`} />
   );
 }
