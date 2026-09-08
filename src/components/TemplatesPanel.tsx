@@ -22,7 +22,7 @@ const TEMPLATES: Template[] = [
 
 export default function TemplatesPanel() {
   const { state, dispatch, pushHistory, autoLayout } = useMindMap();
-  const { theme } = state;
+  const { theme, layout, connectionStyle, showGrid, gridSize, showMiniMap, showProperties, searchQuery, clipboard } = state;
   const isDark = theme === 'dark';
   const [isOpen, setIsOpen] = useState(false);
 
@@ -122,11 +122,48 @@ export default function TemplatesPanel() {
         return;
     }
 
+    // Set flag to prevent loading from localStorage on next render
+    sessionStorage.setItem('template-just-applied', 'true');
+    
+    // Apply template with all necessary state updates
+    const newState = {
+      nodes,
+      connections: [],
+      rootId,
+      selectedNodeId: null,
+      multiSelectedIds: [],
+      zoom: 1,
+      panX: 0,
+      panY: 0,
+      theme,
+      layout,
+      connectionStyle,
+      showGrid,
+      gridSize,
+      showMiniMap,
+      showProperties,
+      searchQuery,
+      clipboard,
+      history: [],
+      historyIndex: -1,
+      presentationMode: false,
+      presentationIndex: 0,
+    };
+    
     dispatch({
-      type: 'BATCH_UPDATE',
-      payload: { nodes, connections: [] },
+      type: 'LOAD_STATE',
+      payload: newState,
     });
-    dispatch({ type: 'SET_STATE', payload: { rootId, selectedNodeId: null } });
+    
+    // Save new state to localStorage immediately
+    const toSave = {
+      nodes: newState.nodes,
+      connections: newState.connections,
+      rootId: newState.rootId,
+      theme: newState.theme,
+      layout: newState.layout,
+    };
+    localStorage.setItem('mindmap-pro-state', JSON.stringify(toSave));
     
     setTimeout(() => {
       autoLayout();

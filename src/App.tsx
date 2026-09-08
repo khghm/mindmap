@@ -14,9 +14,19 @@ function MindMapApp() {
   const { state, addNode, updateNode, pushHistory, autoLayout, importJSON, dispatch } = useMindMap();
   const demoCreated = useRef(false);
   const [showWelcome, setShowWelcome] = useState(true);
+  const templateJustApplied = useRef(false);
 
   // Load from localStorage or create demo
   useEffect(() => {
+    // Check if template was just applied
+    const templateApplied = sessionStorage.getItem('template-just-applied');
+    if (templateApplied === 'true') {
+      sessionStorage.removeItem('template-just-applied');
+      templateJustApplied.current = true;
+      setShowWelcome(false);
+      return;
+    }
+
     const saved = localStorage.getItem('mindmap-pro-state');
     if (saved) {
       try {
